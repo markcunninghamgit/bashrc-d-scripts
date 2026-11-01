@@ -1,124 +1,82 @@
-# bashrc.d-scripts
+# bashrc-d-scripts
 
-A modular `~/.bashrc.d/` framework for bash. Instead of one bloated `~/.bashrc`,
-your shell config lives in small, self-contained scripts that are sourced
-automatically at startup — the same idea as `/etc/profile.d/`, but for your
-home directory.
+My personal machine-setup repo. It's public so I can clone it anywhere, but
+**this is not a supported project** — it's my config, for my machines. Reuse
+anything you like, at your own risk; don't expect docs, issues, or support.
 
-## Why
+Three kinds of things live here:
 
-A single `~/.bashrc` grows forever: aliases, prompt settings, PATH tweaks,
-tool-specific config, one-off hacks. Splitting it into a directory of small
-scripts keeps things readable, sortable, and easy to share between machines.
-
-## How it works
-
-Your `~/.bashrc` contains one small block that sources every `*.sh` file in
-`~/.bashrc.d/`, in sorted order:
-
-```bash
-# ~/.bashrc.d/ modular config
-if [ -d "${HOME}/.bashrc.d" ]; then
-    for rc in "${HOME}"/.bashrc.d/*.sh; do
-        [ -f "$rc" ] && . "$rc"
-    done
-    unset rc
-fi
-```
-
-The `*.sh` suffix is intentional: it keeps READMEs, editor backups, and
-disabled files out of the glob. To temporarily disable a script, rename it
-(e.g. `10-prompt.sh.disabled`).
-
-## File naming convention
-
-Files are sourced in lexical order, so use a numeric prefix to control
-dependencies (e.g. environment before prompt):
-
-```
-~/.bashrc.d/
-├── 00-path.sh          # PATH setup — should come first
-├── 10-environment.sh   # exports, editor, misc env vars
-├── 20-aliases.sh       # general aliases
-├── 30-functions.sh     # helper functions
-├── 40-tools.sh         # tool-specific config (nvm, pyenv, direnv, ...)
-├── 50-prompt.sh        # prompt/theme — should come last
-└── README.md           # not sourced (no .sh suffix)
-```
-
-## Installation
-
-### Fresh install (clones this repo into ~/.bashrc.d)
-
-```bash
-git clone https://github.com/markcunninghamgit/bashrc-d-scripts.git ~/.bashrc.d
-~/.bashrc.d/install.sh
-```
-
-`install.sh` backs up your existing `~/.bashrc` to `~/.bashrc.bak` if it needs
-to modify it, appends the sourcing block, and does **not** overwrite anything
-you already wrote yourself.
-
-### Manual setup
-
-1. Copy or clone this repo's `scripts/` contents into `~/.bashrc.d/`
-2. Add the sourcing block (above) to your `~/.bashrc`
-3. Restart your shell or run `exec bash`
-
-### Updating
-
-Since the directory is a git clone:
-
-```bash
-cd ~/.bashrc.d && git pull
-```
-
-Your own scripts stay in the directory alongside the tracked ones — keep local
-or machine-specific scripts untracked, or fork the repo and commit them.
-
-## Writing your own scripts
-
-Each script is sourced by your interactive shell, so it has full access to
-your environment. Keep them small and single-purpose:
-
-```bash
-# ~/.bashrc.d/99-example.sh
-alias ll='ls -alF'
-
-greet() {
-    printf 'Hello, %s\n' "${USER:-there}"
-}
-```
-
-Guidelines:
-
-- One concern per file; name it after what it does.
-- Guard tool-specific scripts so they don't error when the tool is missing:
-  `command -v nvm >/dev/null || return 0`
-- Prefix personal scripts with a high number (`90-`+) so they load after the
-  framework's environment setup.
-
-## Which files exist here
-
-| File | Purpose |
+| Directory | What it is |
 |---|---|
-| `install.sh` | Appends the sourcing block to `~/.bashrc` (with backup) |
-| `scripts/00-path.sh` | PATH additions |
-| `scripts/10-environment.sh` | Editor, history, and general exports |
-| `scripts/20-aliases.sh` | Common aliases |
-| `scripts/30-functions.sh` | Small helper functions |
-| `scripts/40-tools.sh` | Optional tool integrations (guarded) |
-| `scripts/50-prompt.sh` | Prompt setup |
+| `bashrc.d/` | Modular shell config, sourced by `~/.bashrc` |
+| `bin/` | Scripts that normally live in `~/bin`, on PATH |
+| `setup-scripts/` | One-off scripts to set up an environment (run once per machine) |
 
-## Uninstall
+## bashrc.d: available / enabled
 
-Remove the sourcing block from your `~/.rc` and delete `~/.bashrc.d/`. Your
-original `~/.bashrc` backup (if created) is at `~/.bashrc.bak`.
+Shell config modules live in `bashrc.d/available/`. Only modules symlinked
+into `bashrc.d/enabled/` are actually sourced — the Debian/Apache
+`mods-available` / `mods-enabled` pattern:
 
-## Notes
+```
+bashrc.d/
+├── available/    # every module; source of truth
+└── enabled/      # symlinks -> ../available/<name>.sh; only these get sourced
+```
 
-- `~/.bashrc.d/` is a grassroots convention, not an official bash or distro
-  feature — but it's widely used and immediately recognizable to anyone
-  reading your dotfiles.
-- This framework targets bash. zsh users should look at similar approaches
-  in their own ecosystem.
+Enable/disable a module on a machine:
+
+```bash
+cd <repo>/bashrc.d/enabled
+ln -s ../available/50-docker.sh .    # enable
+rm 50-docker.sh                      # disable
+```
+
+Most modules are numbered `50-`; the sourcing glob sorts lexically, so if
+something genuinely must run before/after the rest, give it `10-` or `90-`.
+
+To add a module: drop a file in `bashrc.d/available/`, symlink it in
+`enabled/` if you want it on, commit. Nothing else needs updating.
+
+## Install
+
+```bash
+git clone https://github.com/markcunninghamgit/bashrc-d-scripts.git
+cd bashrc-d-scripts
+./install.sh
+```
+
+`install.sh` is interactive — it asks about each step — or fully scriptable:
+
+```bash
+./install.sh --non-interactive --bin-mode path --immutable no
+./install.sh --bin-mode symlink-files --enable 50-nvm --enable 50-dotnet
+```
+
+It will:
+
+1. Append a sourcing block to `~/.bashrc` (backs up to `~/.bashrc.bak` first;
+   re-runs update the block in place rather than duplicating it).
+2. Put `bin/` on PATH your way: a PATH entry pointing at the repo, a single
+   directory symlink in `~/.local/bin`, per-file symlinks, or copies.
+3. Optionally enable extra modules.
+4. Optionally set `chattr +i` on `~/.bashrc`, the repo tree, and deployed bin
+   files (uses sudo automatically if you're not root).
+
+Run `./install.sh --help` for all flags.
+
+## Setup scripts
+
+One-off, run-once-per-machine scripts in `setup-scripts/`:
+
+- `eternal-history.sh` — protects unlimited bash history: comments out any
+  numeric `HISTSIZE`/`HISTFILESIZE` exports in `~/.bashrc` (which would let
+  bash truncate the history file), creates `~/.bash_eternal_history`, and
+  offers `chattr +a` so no session can ever truncate or overwrite it.
+
+## Syncing changes
+
+The repo is the source of truth. Edit files in the checkout, commit, push,
+`git pull` on other machines. `bin/` is always current when installed via
+PATH entry, directory symlink, or per-file symlinks; only `copy` mode needs
+a re-run of `install.sh` after changes.
