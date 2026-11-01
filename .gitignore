@@ -1,0 +1,3 @@
+# Module symlinks are per-machine state — never commit them.
+bashrc.d/enabled/*
+!bashrc.d/enabled/.gitkeep
