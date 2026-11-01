@@ -33,6 +33,7 @@ BIN_DIR="${REPO_DIR}/bin"
 LOCAL_BIN="${HOME}/.local/bin"
 BLOCK_MARKER="bashrc.d modular config"
 BIN_PATH_MARKER="bashrc.d bin PATH entry"
+FORCE=0
 
 usage() {
     cat <<'USAGE'
@@ -46,6 +47,9 @@ Commands:
   enable-all               Enable every module in available/.
   protect                  chattr +i ~/.bashrc, repo tree, deployed bin files.
   unprotect                Remove chattr +i flags.
+
+Module options (enable / enable-all):
+  --force                  Bypass the bash -n syntax check when enabling.
 
 Install options:
   --non-interactive        No prompts; all decisions must be flagged.
@@ -87,6 +91,32 @@ sudo_prefix() {
 # --------------------------------------------------------------------------
 # Module commands
 # --------------------------------------------------------------------------
+confirm_syntax() {
+    # confirm_syntax <file> <canonical>: returns 0 if OK to enable.
+    local file="$1" canonical="$2" err answer
+    if err="$(bash -n "$file" 2>&1)"; then
+        return 0
+    fi
+    warn "${canonical} fails bash -n syntax check:"
+    printf '  %s\n' "$err" >&2
+    if [ "$FORCE" -eq 1 ]; then
+        warn "Enabling anyway (--force)."
+        return 0
+    fi
+    if [ -t 0 ] && [ -t 1 ]; then
+        while true; do
+            read -r -p "Enable ${canonical} anyway? [y/N] " answer || answer=n
+            case "${answer:-n}" in
+                [Yy]*) return 0 ;;
+                [Nn]*|'') return 1 ;;
+                *) warn "Please answer yes or no." ;;
+            esac
+        done
+    fi
+    warn "Non-interactive with no --force — skipping ${canonical}."
+    return 1
+}
+
 resolve_module() {
     # resolve_module <name> -> echoes canonical basename, or fails.
     local name="$1" src
@@ -102,16 +132,21 @@ resolve_module() {
 
 cmd_enable() {
     [ $# -ge 1 ] || die "enable: provide one or more module names (see: manage.sh list)"
-    local name canonical
+    local name canonical failed=0
     for name in "$@"; do
-        canonical="$(resolve_module "$name")" || { warn "Module not found in available/: $name"; continue; }
+        canonical="$(resolve_module "$name")" || { warn "Module not found in available/: $name"; failed=1; continue; }
         if [ -L "$ENABLED_DIR/$canonical" ]; then
             log "Already enabled: $canonical"
-        else
-            ln -s "../available/$canonical" "$ENABLED_DIR/$canonical"
-            log "Enabled: $canonical"
+            continue
         fi
+        if ! confirm_syntax "$AVAILABLE_DIR/$canonical" "$canonical"; then
+            failed=1
+            continue
+        fi
+        ln -s "../available/$canonical" "$ENABLED_DIR/$canonical"
+        log "Enabled: $canonical"
     done
+    [ "$failed" -eq 0 ]
 }
 
 cmd_disable() {
@@ -134,10 +169,10 @@ cmd_enable_all() {
     local f n=0
     for f in "$AVAILABLE_DIR"/*; do
         [ -e "$f" ] || continue
-        cmd_enable "$(basename "$f")"
+        cmd_enable "$(basename "$f")" || true
         n=$((n + 1))
     done
-    log "Enabled (or already enabled) $n module(s)."
+    log "Processed $n module(s)."
 }
 
 cmd_list() {
@@ -333,6 +368,7 @@ cmd_install() {
                 [ $# -ge 2 ] || die "--enable requires a module name"
                 ENABLE_LIST+=("$2"); shift ;;
             --enable-all) ENABLE_LIST+=("__ALL__") ;;
+            --force) FORCE=1 ;;
             *) die "Unknown install option: $1 (see: manage.sh with no args)" ;;
         esac
         shift
@@ -383,7 +419,7 @@ cmd_install() {
             if [ "$m" = "__ALL__" ]; then
                 cmd_enable_all
             else
-                cmd_enable "$m"
+                cmd_enable "$m" || true
             fi
         done
     elif [ "$INTERACTIVE" -eq 1 ]; then
@@ -392,7 +428,7 @@ cmd_install() {
         cmd_list
         read -r -p "Enable modules (space-separated, blank to skip): " answer || answer=""
         local name
-        for name in $answer; do cmd_enable "$name"; done
+        for name in $answer; do cmd_enable "$name" || true; done
     fi
 
     # immutability
@@ -427,9 +463,15 @@ cmd="$1"; shift
 case "$cmd" in
     install)    cmd_install "$@" ;;
     list)       cmd_list ;;
-    enable)     cmd_enable "$@" ;;
+    enable)
+        for arg in "$@"; do
+            [ "$arg" = "--force" ] && { FORCE=1; shift; } || break
+        done
+        cmd_enable "$@" ;;
     disable)    cmd_disable "$@" ;;
-    enable-all) cmd_enable_all ;;
+    enable-all)
+        [ "${1:-}" = "--force" ] && FORCE=1
+        cmd_enable_all ;;
     protect)    cmd_protect ;;
     unprotect)  cmd_unprotect ;;
     -h|--help)  usage; exit 0 ;;

@@ -28,6 +28,12 @@ Enable/disable modules on a machine:
 ./manage.sh disable 50-docker
 ```
 
+`enable` runs `bash -n` on the module first: if it fails the syntax check,
+you get a warning and an interactive confirm before it's enabled. In
+non-interactive contexts a failing module is skipped (exit 1); pass
+`--force` to enable it anyway (works on `enable`, `enable-all`, and
+`install --enable` too).
+
 (Manual equivalent: `ln -s ../available/50-docker.sh bashrc.d/enabled/` —
 the symlinks are local-only, never committed.)
 
