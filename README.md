@@ -39,6 +39,8 @@ the symlinks are local-only, never committed.)
 
 Most modules are numbered `50-`; the sourcing glob sorts lexically, so if
 something genuinely must run before/after the rest, give it `10-` or `90-`.
+The `enabled/` directory is git-ignored, so machine-specific symlinks can
+never be accidentally committed.
 
 To add a module: drop a file in `bashrc.d/available/`, enable it where
 wanted, commit. Nothing else needs updating.
@@ -74,7 +76,10 @@ Install steps:
 1. Append a sourcing block to `~/.bashrc` (backs up to `~/.bashrc.bak` first;
    re-runs update the block in place rather than duplicating it).
 2. Put `bin/` on PATH your way: a PATH entry pointing at the repo, a single
-   directory symlink in `~/.local/bin`, per-file symlinks, or copies.
+   directory symlink in `~/.local/bin` (the directory itself is added to
+   PATH, since PATH lookup is not recursive), per-file symlinks, or copies.
+   Copies are tracked as ours in `~/.local/state/bashrc-d-scripts/` so
+   re-runs refresh them without touching unrelated files in `~/.local/bin`.
 3. Enable the modules you want.
 4. Optionally set `chattr +i` on `~/.bashrc`, the repo tree, and deployed bin
    files (uses sudo automatically if you're not root).

@@ -63,8 +63,8 @@ fi
 # 2. Comment out numeric HISTSIZE / HISTFILESIZE exports
 # --------------------------------------------------------------------------
 changed=0
-if grep -Eq '^[[:space:]]*export[[:space:]]+HIST(FILE)?SIZE[[:space:]]*=[[:space:]]*[0-9]+' "$BASHRC"; then
-    sed -i -E 's/^([[:space:]]*export[[:space:]]+HIST(FILE)?SIZE[[:space:]]*=[[:space:]]*[0-9]+.*)$/# disabled by eternal-history setup: \1/' "$BASHRC"
+if grep -Eq '^[[:space:]]*export[[:space:]]+HIST(FILE)?SIZE[[:space:]]*=[[:space:]]*["'"'"']?[0-9]+' "$BASHRC"; then
+    sed -i -E 's/^([[:space:]]*export[[:space:]]+HIST(FILE)?SIZE[[:space:]]*=[[:space:]]*["'"'"']?[0-9]+.*)$/# disabled by eternal-history setup: \1/' "$BASHRC"
     changed=1
     log "Commented out numeric history-size exports in ${BASHRC}:"
     grep -n '# disabled by eternal-history setup:' "$BASHRC" | sed 's/^/  /'
@@ -76,8 +76,11 @@ fi
 # 3. Ensure the history file exists
 # --------------------------------------------------------------------------
 if [ ! -f "$HISTFILE_ETERNAL" ]; then
-    touch "$HISTFILE_ETERNAL"
-    log "Created ${HISTFILE_ETERNAL}"
+    # Owner-only: history can contain credentials. Created 0600 before any
+    # protection is applied, so other local users cannot read it.
+    (umask 077 && touch "$HISTFILE_ETERNAL")
+    chmod 600 "$HISTFILE_ETERNAL" 2>/dev/null || true
+    log "Created ${HISTFILE_ETERNAL} (mode 0600)"
 else
     log "${HISTFILE_ETERNAL} already exists ($(wc -l < "$HISTFILE_ETERNAL") lines)."
 fi
